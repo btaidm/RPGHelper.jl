@@ -1,0 +1,7 @@
+name = "RPGHelper"
+uuid = "36d420d4-6915-11e9-18df-67c7f5178b55"
+authors = ["btaidm "]
+version = "0.1.0"
+
+[deps]
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
