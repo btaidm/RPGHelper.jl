@@ -55,6 +55,7 @@ using RPGHelper
 ```
 
 Each of the standard dice have been defined:
+- `d2`
 - `d4`
 - `d8`
 - `d10`
@@ -64,7 +65,7 @@ Each of the standard dice have been defined:
 
 To create a die of any side count, `N`:
 ```julia
-const weirdDie = RPGHelper.Die{15}()
+const weirdDie = RPGHelper.Die(15)
 ```
 
 ### Random Tables
