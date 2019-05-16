@@ -1,7 +1,7 @@
 module RPGHelper
 
 import Random
-export roll
+export roll, meanroll
 include("diceroll.jl")
 include("tables.jl")
 
@@ -19,5 +19,9 @@ roll(rng::Random.AbstractRNG, d::AbstractDie, ::Val{true}) = sum(roll(rng, d, Va
 roll(rng::Random.AbstractRNG, d::AbstractDie, ::Val{false}) = rand(rng, d)
 
 roll(rng::Random.AbstractRNG, tab::Table) = roll(rng, tab.table[roll(rng, tab.die)[1]])
+meanroll(v) = v
+meanroll(d::AbstractDie; roundFunc = x->floor(Int,x)) = roundFunc( (maxroll(d) + minroll(d)) / 2 )
+
+meanroll(tab::Table) = meanroll(tab.table[meanroll(tab.die)])
 
 end # module

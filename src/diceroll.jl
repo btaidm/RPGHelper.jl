@@ -1,4 +1,4 @@
-export maxroll, minroll, meanroll
+export maxroll, minroll
 
 
 # Define the Dice Rolling Math
