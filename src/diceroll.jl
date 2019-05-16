@@ -1,26 +1,46 @@
-import Random
+export maxroll, minroll, meanroll
+
 
 # Define the Dice Rolling Math
-
 abstract type AbstractDie end
 
-struct Die{S} <: AbstractDie end
+struct Die <: AbstractDie
+	n::Int
+end
+
+maxroll(d::Die) = d.n
+minroll(::Die) = 1
+
 # struct NDie{N,S} <: AbstractDie end
 
 struct ConstDie <: AbstractDie
 	v::Int
 end
+maxroll(d::ConstDie) = d.v
+minroll(d::ConstDie) = d.v
+
 
 struct NegDie{D <: AbstractDie} <: AbstractDie
 	d::D
 end
+maxroll(d::NegDie) = -minroll(d.d)
+minroll(d::NegDie) = -maxroll(d.d)
 
-struct MultiDie{N, Ds} <: AbstractDie end
+
+struct MultiDie{N, Ds} <: AbstractDie
+	ds::Ds
+	function MultiDie(ds::Tuple{Vararg{AbstractDie}})
+		new{length(ds), typeof(ds)}(ds)
+	end
+end
+maxroll(d::MultiDie) = mapreduce(maxroll, +, d.ds)
+minroll(d::MultiDie) = mapreduce(minroll, +, d.ds)
+
 
 Random.gentype(::Type{<:AbstractDie}) = Int
 Random.gentype(::Type{MultiDie{N, Ds}}) where {N, Ds} = NTuple{N,Int}
 
-NegDie(::MultiDie{Ds}) where Ds = MultiDie{NegDie.(Ds)}()
+NegDie(d::MultiDie) = MultiDie(NegDie.(d.ds))
 NegDie(a::ConstDie) = ConstDie(-a.v)
 NegDie(a::NegDie) = a.d
 Base.:-(a::AbstractDie) = NegDie(a)
@@ -40,26 +60,18 @@ function Base.:*(i::Integer, d::Die) where S
 	neg ? NegDie(ret) : ret 
 end
 
-Base.:+(d1::AbstractDie, d2::AbstractDie) = MultiDie{2, (d1, d2)}()
-Base.:+(::MultiDie{N, Ds}, d::AbstractDie) where {N, Ds} = MultiDie{N + 1, (Ds..., d)}()
-Base.:+(d::AbstractDie, ::MultiDie{N, D2s}) where {N, D2s} = MultiDie{N + 1, (d, D2s...)}()
-Base.:+(::MultiDie{N1, D1s}, ::MultiDie{N2, D2s}) where {N1, D1s, N2, D2s} = MultiDie{N1 + N2, (D1s..., D2s...)}()
+Base.:+(d1::AbstractDie, d2::AbstractDie) = MultiDie((d1, d2))
+Base.:+(md::MultiDie, d::AbstractDie) = MultiDie((md.ds..., d))
+Base.:+(d::AbstractDie, md::MultiDie) = MultiDie((d, md.ds...))
+Base.:+(md1::MultiDie, md2::MultiDie) = MultiDie((md1.ds..., md2.ds...))
 Base.:-(a::AbstractDie, b::AbstractDie) = a + (-b)
 
-Base.show(io::IO, ::Die{S}) where S = print(io, "d", S)
+Base.show(io::IO, d::Die) = print(io, "d", d.n)
 Base.show(io::IO, r::ConstDie) = print(io, r.v)
 # Base.show(io::IO, ::NDie{N, S}) where {N, S} = print(io, N, "d", S)
 Base.show(io::IO, d::NegDie) = print(io, "-", d.d)
 
-Base.show(io::IO, d::MultiDie{N, Ds}) where {N, Ds} = join(io, Ds, " + ")
-
-
-for d in (4, 6, 8, 10, 12, 20, 100)
-	@eval begin
-		const $(Symbol(:d, d)) = Die{$(d)}()
-		export $(Symbol(:d, d))
-	end
-end
+Base.show(io::IO, d::MultiDie) = join(io, d.ds, " + ")
 
 # Now the actual Dice roller
 using Random: Sampler, AbstractRNG
@@ -78,7 +90,7 @@ struct SingleDieRoll <: Sampler{Int}
 	sp::Sampler{Int}
 end
 
-Sampler(RNG::Type{<:AbstractRNG}, die::Die{N}, r::Random.Repetition) where N = SingleDieRoll(die, Sampler(RNG, 1:N, r))
+Sampler(RNG::Type{<:AbstractRNG}, die::Die, r::Random.Repetition) = SingleDieRoll(die, Sampler(RNG, 1:die.n, r))
 
 Random.rand(rng::AbstractRNG, roller::SingleDieRoll) = rand(rng, roller.sp)::Int
 
@@ -90,11 +102,11 @@ Sampler(RNG::Type{<:AbstractRNG}, die::NegDie, r::Random.Repetition) = NegDieRol
 
 Random.rand(rng::AbstractRNG, roller::NegDieRoll) = -rand(rng, roller.roller)::Int
 
-struct MultiDieRoll{N, Ds} <: Sampler{NTuple{N,Int}}
+struct MultiDieRoll{N, Ds, Rs} <: Sampler{NTuple{N,Int}}
 	d::MultiDie{N, Ds}
-	rollers::NTuple{N,Union{NegDieRoll, SingleDieRoll, ConstDieRoll}}
+	rollers::Rs
 end
 
-Sampler(RNG::Type{<:AbstractRNG}, die::MultiDie{N, Ds}, r::Random.Repetition) where {N,Ds} = MultiDieRoll(die, map(x->Sampler(RNG, x, r), Ds))
+Sampler(RNG::Type{<:AbstractRNG}, die::MultiDie, r::Random.Repetition) = MultiDieRoll(die, map(x->Sampler(RNG, x, r), die.ds))
 
-Random.rand(rng::AbstractRNG, roller::MultiDieRoll{N}) where N = map(r->rand(rng, r), roller.rollers)
+Random.rand(rng::AbstractRNG, roller::MultiDieRoll) = map(r->rand(rng, r), roller.rollers)
