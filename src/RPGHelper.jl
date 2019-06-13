@@ -45,4 +45,6 @@ meanroll(tab::Table) = meanroll(tab.table[meanroll(tab.die)])
 
 meanroll(gen::Generator{T}) where T = T(map(meanroll, getfield(gen,:tables))...,)
 
+include("yaml.jl")
+
 end # module
