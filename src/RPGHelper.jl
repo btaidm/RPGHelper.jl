@@ -16,7 +16,8 @@ struct Generator{T,TA}
 	end
 end
 
-Generator{T}(;kwargs...) where T = Generator{T}(merge(NamedTuple(),Dict(kwargs)))
+Generator{T}(dict::Dict{Symbol}) where T = Generator{T}(merge(NamedTuple(),dict))
+Generator{T}(;kwargs...) where T = Generator{T}(Dict(kwargs))
 
 Base.propertynames(gen::Generator) = collect(keys(getfield(gen,:tables)))
 Base.getproperty(gen::Generator, f::Symbol) = getproperty(getfield(gen,:tables), f)
