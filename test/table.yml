@@ -1,0 +1,14 @@
+%TAG !rpg! tag:rpghelper.jl,2019:
+---
+testTable: !rpg!table
+  name: TestTable
+  table:
+    1: Table Entry
+    2: 'Table Entry #1'
+
+testTable2: !rpg!table
+  name: TestTable
+  table:
+    1: Table Entry
+    2: 'Table Entry #1'
+  die: !rpg!die d2

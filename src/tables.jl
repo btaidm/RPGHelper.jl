@@ -14,5 +14,6 @@ add!(tab::Table, idx::Int, el) = (setindex!(tab.table, el, idx); tab)
 add!(tab::Table, idxs::AbstractArray{Int}, el) = (foreach(x->add!(tab, x, el),idxs); tab)
 add!(f::Base.Callable, tab::Table, el) = add!(tab, filter(f, minroll(tab.die):maxroll(tab.die)) |> collect, el)
 
+validate(tab::Table) = hasallrolls(tab)
 
-export hasallrolls, add!, Table
+export hasallrolls, add!, Table, validate

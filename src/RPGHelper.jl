@@ -3,6 +3,8 @@ module RPGHelper
 import Random
 export roll, meanroll, Generator
 
+include("utils.jl")
+
 include("diceroll.jl")
 include("tables.jl")
 
@@ -22,12 +24,18 @@ Generator{T}(;kwargs...) where T = Generator{T}(Dict(kwargs))
 Base.propertynames(gen::Generator) = collect(keys(getfield(gen,:tables)))
 Base.getproperty(gen::Generator, f::Symbol) = getproperty(getfield(gen,:tables), f)
 
+function validate(gen::Generator{T}) where T
+	all(in(keys(gen.tables)), fieldnames(T))
+end
+
 for d in (2, 4, 6, 8, 10, 12, 20, 100)
 	@eval begin
 		const $(Symbol(:d, d)) = Die($(d))
 		export $(Symbol(:d, d))
 	end
 end
+
+
 
 roll(v, args...) = roll(Random.GLOBAL_RNG, v, args...)
 roll(rng::Random.AbstractRNG, v) = v
