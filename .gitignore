@@ -1,3 +1,5 @@
-# Specify filepatterns you want git to ignore.
-Manifest.toml
-dev/
+*.jl.*.cov
+*.jl.cov
+*.jl.mem
+/Manifest.toml
+/docs/build/
