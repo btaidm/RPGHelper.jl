@@ -1,9 +1,17 @@
 name = "RPGHelper"
 uuid = "36d420d4-6915-11e9-18df-67c7f5178b55"
-authors = ["btaidm "]
+authors = ["Tim Bradt"]
 version = "0.1.0"
 
 [deps]
-MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
-YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[compat]
+julia = "1.1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
