@@ -1,5 +1,7 @@
 
 # RPG Helper
+[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://btaidm.github.io/RPGHelper.jl/stable)
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://btaidm.github.io/RPGHelper.jl/dev)
 
 This is a package that will with the various random aspects of 
 Table Top Roll Play Games
