@@ -1,18 +1,73 @@
+import Random
+using Random: AbstractRNG, SamplerTrivial
+
+maxroll(x) = x
+minroll(x) = x
+
 abstract type AbstractDie end
 abstract type NumDie <: AbstractDie end
 
-using Statistics: mean
-Base.eltype(::NumDie) = Int
+function Base.:+(d1::AbstractDie, d2::AbstractDie)
+    [d1, d2]
+end
+Base.:+(d1::Vector{<:AbstractDie}, d2::AbstractDie) = [ d1; d2 ]
 
-function maxroll end
-function minroll end
+function Base.:*(c::Integer, d::AbstractDie)
+    c <= 0 || ArgumentError("Multiplier must be 1 or higher")
+    reduce(+, d for _ in 1:c)
+end
+
+struct RollResult
+    rolls::Vector{Int}
+    result::Number
+end
+
+RollResult(a::Int) = RollResult([a], a)
+
+for op in (:+, :-, :*, :/, :%, :^)
+    @eval Base.$op(r1::RollResult, r2::RollResult) = RollResult([r1.rolls; r2.rolls], $(op)(r1.result,r2.result))
+    @eval Base.$op(r1::Number, r2::RollResult) = RollResult(r2.rolls, $(op)(r1,r2.result))
+    @eval Base.$op(r1::RollResult, r2::Number) = RollResult(r1.rolls, $(op)(r1.result,r2))
+end
+
+for op in (:-, :floor, :ceil, :round, :abs)
+    @eval Base.$op(r1::RollResult) = RollResult(r1.rolls, $(op)(r1.result))
+end
+
+for op in (:floor, :ceil, :round)
+    @eval Base.$op(T, r::RollResult; kwargs...) = RollResult(r.rolls, $(op)(T, r.result; kwargs...))
+end
+
+Base.eltype(::NumDie) = RollResult
+
+function roll(rng::AbstractRNG, d::AbstractDie; separate::Bool = false)
+    if(separate)
+        rand.(rng, get_dice(d))
+    else
+        rand(rng, d)
+    end
+end
+
+function roll(rng::AbstractRNG, dice::Vector{<:AbstractDie}; kwargs...)
+    roll.(rng, dice; kwargs...)
+end
+
+
+struct SymbolDie{T} <: AbstractDie
+    vs::Vector{T}
+end
+Base.eltype(::SymbolDie{T}) where T = T
+Random.rand(rng::AbstractRNG, sp::SamplerTrivial{SymbolDie{T} where T}) = rand(rng, sp[].vs)
+
 
 struct Die <: NumDie
     s::Int
 end
-maxroll(d::Die) = d.s
-minroll(::Die) = 1
-meanroll(d::Die) = (1+d.s)/2
+maxroll(d::Die) = RollResult(d.s)
+minroll(::Die) = RollResult(1)
+
+Random.rand(rng::AbstractRNG, sp::SamplerTrivial{Die}) = RollResult(rand(rng, 1:sp[].s))
+
 
 struct NonUniformDie{VS} <: NumDie
     function NonUniformDie{VS}() where VS
@@ -23,97 +78,109 @@ end
 
 NonUniformDie(values::Tuple{Vararg{Number}}) = NonUniformDie{(collect(Int(v) for v in values)...,)}()
 NonUniformDie(vs...) = NonUniformDie(vs)
-maxroll(::NonUniformDie{VS}) where VS = maximum(VS)
-minroll(::NonUniformDie{VS}) where VS = minimum(VS)
-meanroll(::NonUniformDie{VS}) where VS = mean(VS)
+maxroll(::NonUniformDie{VS}) where VS = RollResult(maximum(VS))
+minroll(::NonUniformDie{VS}) where VS = RollResult(minimum(VS))
 getvalues(::NonUniformDie{VS}) where VS = VS
+Random.rand(rng::AbstractRNG, ::SamplerTrivial{NonUniformDie{VS}}) where VS = RollResult(rand(rng, VS))
 
-struct ConstDie <: NumDie
-    v::Int
-end
-maxroll(d::ConstDie) = d.v
-minroll(d::ConstDie) = d.v
-meanroll(d::ConstDie) = d.v
-
-struct NegDie{D <: NumDie} <: NumDie
+const BaseDice = Union{Die, NonUniformDie}
+struct NDie{N,D <: BaseDice} <: NumDie
     d::D
 end
-NegDie(d::D) where D = NegDie{D}(d)
-maxroll(d::NegDie) = -minroll(d.d)
-minroll(d::NegDie) = -maxroll(d.d)
-meanroll(d::NegDie) = -meanroll(d.d)
+NDie{N}(d::D) where {N,D} = NDie{N,D}(d)
+minroll(d::NDie{N}) where N = N * minroll(d.d)
+maxroll(d::NDie{N}) where N = N * maxroll(d.d)
+Random.rand(rng::AbstractRNG, sp::SamplerTrivial{<:NDie{N}}) where N = reduce(+, rand(rng, sp[].d, N))
 
-struct SumDie <: NumDie
-    ds::Vector{NumDie}
+
+
+struct OpDie{OP, A, K} <: NumDie
+    op::OP
+    args::A
+    kwargs::K
 end
 
-maxroll(d::SumDie) = mapreduce(maxroll, +, d.ds)
-minroll(d::SumDie) = mapreduce(minroll, +, d.ds)
-meanroll(d::SumDie) = mapreduce(meanroll, +, d.ds)
+OpDie(op, args) = OpDie(op, args, ())
+
+_calculate(f, op::OpDie) = op.op(f.(op.args)...; op.kwargs...)
+_oprand(::AbstractRNG, x) = x
+_oprand(rng::AbstractRNG, x::AbstractDie) = rand(rng, x)
+_oprand(rng::AbstractRNG) = x -> _oprand(rng,x)
+maxroll(d::OpDie) = _calculate(maxroll, d)
+minroll(d::OpDie) = _calculate(minroll, d)
+Random.rand(rng::AbstractRNG, sp::SamplerTrivial{<:OpDie}) = _calculate(_oprand(rng), sp[])
+Base.convert(::Type{Expr}, op::OpDie{O,A,Tuple{}} where {O,A}) = :($(Symbol(op.op))($(op.args...)))
+function Base.convert(::Type{Expr}, op::OpDie)
+    if isempty(op.kwargs)
+        :($(Symbol(op.op))($(op.args...)))
+    else
+        :($(Symbol(op.op))($(op.args...); $(op.kwargs...)))
+    end
+end
+
+function Base.show_unquoted(io::IO, op::OpDie, ::Int, prec::Int)
+	if Base.operator_precedence(Symbol(op.op)) < prec
+        print(io, "(")
+        show(io, op)
+        print(io, ")")
+    else
+        show(io, op)
+    end
+end
 
 # Math Operators
-Base.:-(d::NumDie) = NegDie(d)
-Base.:-(d::SumDie) = SumDie(broadcast(-, d.ds))
-Base.:-(d::NegDie) = d.d
-Base.:-(d::ConstDie) = ConstDie(-d.v)
+for op in (:+, :-, :*, :/, :%, :^)
+    @eval Base.$op(r1::NumDie, r2::NumDie) = OpDie($op,(r1, r2))
+    @eval Base.$op(r1::NumDie, r2::Number) = OpDie($op,(r1, r2))
+    @eval Base.$op(r1::Number, r2::NumDie) = OpDie($op,(r1, r2))
+    @eval Base.$op(r1::Integer, r2::NumDie) = OpDie($op,(r1, r2))
+end
 
-Base.:+(d1::NumDie, d2::NumDie) = SumDie([d1, d2])
-Base.:+(d1::SumDie, d2::NumDie) = SumDie([d1.ds; d2])
-Base.:+(d1::NumDie, d2::SumDie) = SumDie([d1; d2.ds])
-Base.:+(d1::SumDie, d2::SumDie) = SumDie([d1.ds; d2.ds])
+function Base.:*(r1::Integer, r2::BaseDice)
+    r = NDie{abs(r1)}(r2)
+    if r1 < 0
+        -r
+    elseif r1 == 0
+        0
+    else
+        r
+    end
+end
 
-Base.:-(d1::NumDie, d2::NumDie) = d1 + -(d2)
+for op in (:-, :floor, :ceil, :round, :abs)
+    @eval Base.$op(r1::NumDie) = OpDie($op, (r1,))
+end
 
-Base.:+(d1::Integer, d2::NumDie) = ConstDie(d1) + d2
-Base.:+(d1::NumDie, d2::Integer) = d1 + ConstDie(d2)
-Base.:-(d1::Integer, d2::NumDie) = ConstDie(d1) - d2
-Base.:-(d1::NumDie, d2::Integer) = d1 - ConstDie(d2)
-
-Base.:*(d1::Integer, d2::NumDie) = (d1 == 0 ? ConstDie(0) : reduce(+, (d1 < 0 ? -d2 : d2) for _ in 1:abs(d1)))
+for op in (:floor, :ceil, :round)
+    @eval Base.$op(T, r::NumDie; kwargs...) = OpDie($op, (T, r), kwargs)
+end
 
 # Print Operations
 
 Base.show(io::IO, d::Die) = print(io, "d", d.s)
-Base.show(io::IO, d::SumDie) = join(io, d.ds, " + ")
-Base.show(io::IO, d::ConstDie) = print(io, d.v)
-Base.show(io::IO, d::NegDie) = print(io, "-(", d.d, ")")
+Base.show(io::IO, d::NDie{N}) where N = print(io, N, d.d)
+function Base.show(io::IO, op::OpDie)
+    print(io, convert(Expr, op::OpDie))
+end
+
 
 # Utility
+get_dice(_) = []
 get_dice(d::AbstractDie) = [d]
-function get_dice(d::SumDie)
+get_dice(d::NDie{N}) where N = collect(d.d for _ in 1:N)
+function get_dice(d::OpDie)
     ds = []
-    for di in d.ds
+    for di in d.args
         append!(ds, get_dice(di))
     end
     ds
 end
 export get_dice
 
-# Random Generation
-using Random: AbstractRNG, SamplerSimple, Sampler
+# Container roll
 
 
-Random.Sampler(RNG::Type{<:AbstractRNG}, d::Die, r::Random.Repetition) = SamplerSimple(d, Sampler(RNG, 1:d.s, r))
-Random.Sampler(RNG::Type{<:AbstractRNG}, d::NonUniformDie, r::Random.Repetition) = SamplerSimple(d, Sampler(RNG, getvalues(d), r))
-Random.Sampler(RNG::Type{<:AbstractRNG}, d::NegDie, r::Random.Repetition) = SamplerSimple(d, Sampler(RNG, d.d, r))
-Random.Sampler(RNG::Type{<:AbstractRNG}, d::ConstDie, r::Random.Repetition) = SamplerSimple(d, d.v)
-Random.Sampler(RNG::Type{<:AbstractRNG}, d::SumDie, r::Random.Repetition) = SamplerSimple(d, d.ds)
 
-Random.rand(rng::AbstractRNG, sp::SamplerSimple{Die}) = rand(rng, sp.data)
-Random.rand(rng::AbstractRNG, sp::SamplerSimple{<:NonUniformDie}) = rand(rng, sp.data)
-Random.rand(rng::AbstractRNG, sp::SamplerSimple{<:NegDie}) = -rand(rng, sp.data)
-Random.rand(rng::AbstractRNG, sp::SamplerSimple{ConstDie}) = sp.data
-Random.rand(rng::AbstractRNG, sp::SamplerSimple{SumDie}) = mapreduce(x->rand(rng, x), +, sp.data)
-
-function roll(rng::AbstractRNG, d::AbstractDie; separate::Bool = false)
-    if(separate)
-        rand.(rng, get_dice(d))
-    else
-        rand(rng, d)
-    end
-end
-
-Base.:!(d::AbstractDie) = roll(d)
 
 # Common Dice
 for d in (2, 4, 6, 8, 10, 12, 20, 100)
@@ -122,3 +189,11 @@ for d in (2, 4, 6, 8, 10, 12, 20, 100)
 		export $(Symbol(:d, d))
 	end
 end
+
+const dF = NonUniformDie{(-1,-1,0,0,1,1)}()
+export dF
+
+const dTrueFalse = SymbolDie([true, false])
+export dTrueFalse
+
+# Modifiers
