@@ -24,6 +24,8 @@ end
 
 RollResult(a::Int) = RollResult([a], a)
 
+Base.getindex(r::RollResult) = r.result
+
 for op in (:+, :-, :*, :/, :%, :^)
     @eval Base.$op(r1::RollResult, r2::RollResult) = RollResult([r1.rolls; r2.rolls], $(op)(r1.result,r2.result))
     @eval Base.$op(r1::Number, r2::RollResult) = RollResult(r2.rolls, $(op)(r1,r2.result))
