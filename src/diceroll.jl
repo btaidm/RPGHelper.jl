@@ -369,6 +369,7 @@ struct Keep{S} <: Modifier
         new{s}(count)
     end
 end
+Keep(count::Int) = Keep(:high, count)
 export Keep
 modifier_order(::Type{<:Keep}) = 50
 drop_count(total::Int, keep::Keep) = total - keep.count
@@ -382,6 +383,7 @@ struct Drop{S} <: Modifier
         new{s}(count)
     end
 end
+Drop(count::Int) = Drop(:low, count)
 export Drop
 modifier_order(::Type{<:Drop}) = 60
 drop_count(::Int, drop::Drop) = drop.count
